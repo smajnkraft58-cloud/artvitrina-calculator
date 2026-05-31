@@ -653,3 +653,26 @@ select.addon-select:focus { border-color: var(--petal); }
 .history-card-actions {
   display: flex; gap: 8px; flex-wrap: wrap;
 }
+
+/* ── 2D Visualization ─────────────────────────────────────────── */
+.viz-wrap {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.viz-wrap.hidden { display: none; }
+.viz-title {
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #9a9088;
+  margin-bottom: 12px;
+}
+#viz-area {
+  background: #faf9f6;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 8px;
+  overflow-x: auto;
+}

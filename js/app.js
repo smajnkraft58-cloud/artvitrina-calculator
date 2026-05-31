@@ -347,6 +347,7 @@ window.saveBase = () => {
   closeWizard();
   renderBases();
   updateSummary();
+  renderVisualization();
   saveProject();
 };
 
@@ -365,6 +366,7 @@ window.removeBase = (id) => {
   project.bases = project.bases.filter(b => b.id !== id);
   renderBases();
   updateSummary();
+  renderVisualization();
   saveProject();
 };
 
@@ -786,3 +788,4 @@ initAddons();
 restoreFormFields();
 renderBases();
 updateSummary();
+// viz is rendered after viz.js loads (deferred below)
