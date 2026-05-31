@@ -707,7 +707,7 @@ select.addon-select:focus { border-color: var(--petal); }
   overflow: hidden; position: relative;
   background: #f5f3ef;
 }
-#viz-3d canvas { display: block; width: 100% !important; height: 100% !important; }
+#viz-3d canvas { display: block; }
 #viz-3d.hidden { display: none; }
 
 /* fullscreen mode */

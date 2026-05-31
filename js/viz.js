@@ -118,9 +118,9 @@ function resizeThree() {
   if (!threeCtx) return;
   const { renderer, camera } = threeCtx;
   const container = document.getElementById('viz-3d');
-  const w = container.clientWidth;
-  const h = container.clientHeight || 400;
-  renderer.setSize(w, h);
+  const w = container.offsetWidth  || 600;
+  const h = container.offsetHeight || 420;
+  renderer.setSize(w, h, false); // false = don't touch canvas CSS
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
