@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -150,10 +151,13 @@
     <div class="admin-header">
       <h2>⚙️ Настройки и цены</h2>
       <div class="admin-actions">
-        <button class="btn btn-outline" id="btn-export-config">↓ Экспорт конфигурации</button>
-        <button class="btn btn-outline" id="btn-import-config">↑ Импорт конфигурации</button>
+        <button class="btn btn-primary" id="btn-export-excel">↓ Экспорт Excel</button>
+        <button class="btn btn-primary" id="btn-import-excel">↑ Импорт Excel</button>
+        <button class="btn btn-outline" id="btn-export-config">↓ Экспорт JSON</button>
+        <button class="btn btn-outline" id="btn-import-config">↑ Импорт JSON</button>
         <button class="btn btn-danger" id="btn-reset-config">↺ Сбросить по умолчанию</button>
         <input type="file" id="import-file" accept=".json" style="display:none">
+        <input type="file" id="import-excel-file" accept=".xlsx,.xls" style="display:none">
       </div>
     </div>
 

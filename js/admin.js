@@ -178,6 +178,108 @@ document.getElementById('import-file').addEventListener('change', e => {
   e.target.value = '';
 });
 
+// ─── Export / Import Excel ────────────────────────────────────────────────────
+document.getElementById('btn-export-excel').addEventListener('click', () => {
+  const wb = XLSX.utils.book_new();
+
+  const sections = [
+    { key: 'materials',  title: 'Материалы' },
+    { key: 'facades',    title: 'Фасады' },
+    { key: 'filling',    title: 'Наполнение' },
+    { key: 'wallPanels', title: 'Стеновые панели' },
+  ];
+
+  sections.forEach(({ key, title }) => {
+    const rows = [['Ключ', 'Наименование', 'Единица', 'Цена (₽)']];
+    Object.entries(cfg[key]).forEach(([k, v]) => {
+      rows.push([k, v.name, v.unit, v.price]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 22 }, { wch: 38 }, { wch: 10 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws, title);
+  });
+
+  // General sheet
+  const genRows = [
+    ['Параметр', 'Значение'],
+    ['Цена доборов / фальша (₽/м²)',  cfg.general.doborPricePerM2],
+    ['Мягкая подушка (₽/м²)',          cfg.general.cushionPricePerM2],
+    ['Коэффициент отходов ЛДСП',       cfg.general.ldspWasteCoeff],
+    ['Коэффициент отходов ЛХДФ',       cfg.general.lhdfWasteCoeff],
+    ['Ширина добора (мм)',              cfg.general.doborWidth],
+  ];
+  const wsGen = XLSX.utils.aoa_to_sheet(genRows);
+  wsGen['!cols'] = [{ wch: 36 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsGen, 'Общие параметры');
+
+  XLSX.writeFile(wb, 'artvitrina-prices.xlsx');
+});
+
+document.getElementById('btn-import-excel').addEventListener('click', () => {
+  document.getElementById('import-excel-file').click();
+});
+
+document.getElementById('import-excel-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, { type: 'array' });
+
+      const sections = [
+        { key: 'materials',  title: 'Материалы' },
+        { key: 'facades',    title: 'Фасады' },
+        { key: 'filling',    title: 'Наполнение' },
+        { key: 'wallPanels', title: 'Стеновые панели' },
+      ];
+
+      let updated = 0;
+      sections.forEach(({ key, title }) => {
+        const ws = wb.Sheets[title];
+        if (!ws) return;
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        rows.slice(1).forEach(row => {
+          const [k, , , price] = row;
+          if (k && cfg[key][k] !== undefined && price !== undefined && price !== '') {
+            cfg[key][k].price = +price;
+            updated++;
+          }
+        });
+      });
+
+      // General sheet
+      const wsGen = wb.Sheets['Общие параметры'];
+      if (wsGen) {
+        const genRows = XLSX.utils.sheet_to_json(wsGen, { header: 1 });
+        const map = {
+          'Цена доборов / фальша (₽/м²)': 'doborPricePerM2',
+          'Мягкая подушка (₽/м²)':         'cushionPricePerM2',
+          'Коэффициент отходов ЛДСП':       'ldspWasteCoeff',
+          'Коэффициент отходов ЛХДФ':       'lhdfWasteCoeff',
+          'Ширина добора (мм)':             'doborWidth',
+        };
+        genRows.slice(1).forEach(row => {
+          const [param, val] = row;
+          if (map[param] && val !== undefined && val !== '') {
+            cfg.general[map[param]] = +val;
+            updated++;
+          }
+        });
+      }
+
+      saveConfig(cfg);
+      renderAdmin();
+      updateSummary();
+      showToast(`Цены обновлены (${updated} позиций)`);
+    } catch (err) {
+      showError('Ошибка при загрузке файла: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+});
+
 document.getElementById('btn-reset-config').addEventListener('click', () => {
   if (confirm('Сбросить все цены и параметры к значениям по умолчанию?')) {
     localStorage.removeItem('artvitrina_config');
