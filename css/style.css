@@ -676,3 +676,40 @@ select.addon-select:focus { border-color: var(--petal); }
   padding: 8px;
   overflow-x: auto;
 }
+
+/* ── 3D / 2D Viz toolbar ──────────────────────────────────────── */
+.viz-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px; flex-wrap: wrap;
+}
+.viz-tabs {
+  display: flex; gap: 4px; margin-left: auto;
+}
+.viz-tab {
+  padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+  background: transparent; font-family: inherit; font-size: .75rem;
+  font-weight: 700; letter-spacing: .04em; cursor: pointer; color: #7a6e64;
+  transition: all .18s;
+}
+.viz-tab.active, .viz-tab:hover {
+  background: var(--graphite); color: var(--white); border-color: var(--graphite);
+}
+.viz-fullscreen {
+  padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; cursor: pointer; font-size: 1rem; line-height: 1;
+  color: #7a6e64; transition: all .18s;
+}
+.viz-fullscreen:hover { background: var(--graphite); color: var(--white); }
+
+/* ── 3D canvas ────────────────────────────────────────────────── */
+#viz-3d {
+  width: 100%; height: 420px; border-radius: var(--radius-sm);
+  overflow: hidden; position: relative;
+  background: #f5f3ef;
+}
+#viz-3d canvas { display: block; width: 100% !important; height: 100% !important; }
+#viz-3d.hidden { display: none; }
+
+/* fullscreen mode */
+#viz-wrap:fullscreen #viz-3d { height: calc(100vh - 80px); }
+#viz-wrap:-webkit-full-screen #viz-3d { height: calc(100vh - 80px); }
