@@ -25,8 +25,6 @@ document.querySelectorAll('.viz-tab').forEach(btn => {
     document.querySelectorAll('.viz-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     vizMode = btn.dataset.view;
-    document.getElementById('viz-3d').classList.toggle('hidden', vizMode !== '3d');
-    document.getElementById('viz-area').classList.toggle('hidden', vizMode !== '2d');
     renderVisualization();
   });
 });
@@ -48,15 +46,19 @@ document.addEventListener('fullscreenchange', () => {
 // 3D RENDERER
 // ══════════════════════════════════════════════════════════════════════════════
 
+function show3D() {
+  document.getElementById('viz-3d').style.display = 'block';
+  document.getElementById('viz-area').style.display = 'none';
+}
+function show2D() {
+  document.getElementById('viz-3d').style.display = 'none';
+  document.getElementById('viz-area').style.display = 'block';
+}
+
 function render3D() {
-  document.getElementById('viz-3d').classList.remove('hidden');
-  document.getElementById('viz-area').classList.add('hidden');
-
-  if (!window.THREE) { render2D(); return; } // fallback if Three.js didn't load
-
-  if (!threeCtx) {
-    initThree();
-  }
+  show3D();
+  if (!window.THREE) { render2D(); return; }
+  if (!threeCtx) initThree();
   buildScene();
 }
 
@@ -520,8 +522,7 @@ function getFacadeColor(key) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function render2D() {
-  document.getElementById('viz-3d').classList.add('hidden');
-  document.getElementById('viz-area').classList.remove('hidden');
+  show2D();
   document.getElementById('viz-area').innerHTML = buildVizSVG();
 }
 
