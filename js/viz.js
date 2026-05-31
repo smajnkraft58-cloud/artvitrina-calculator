@@ -58,8 +58,11 @@ function show2D() {
 function render3D() {
   show3D();
   if (!window.THREE) { render2D(); return; }
-  if (!threeCtx) initThree();
-  buildScene();
+  // defer until layout is painted so canvas has real size
+  requestAnimationFrame(() => {
+    if (!threeCtx) initThree();
+    buildScene();
+  });
 }
 
 function initThree() {
@@ -228,164 +231,151 @@ const MAT_EDGE   = () => new THREE.LineBasicMaterial({ color: 0x8a7e70, linewidt
 function buildScene() {
   const { scene, camera, controls, sun } = threeCtx;
 
-  // Clear everything tagged as furniture or room
+  // Clear furniture + room objects
   const toRemove = [];
-  scene.traverse(obj => { if (obj.userData.isFurniture || obj.userData.isRoom) toRemove.push(obj); });
+  scene.traverse(obj => { if (obj.userData.isCab || obj.userData.isRoom) toRemove.push(obj); });
   toRemove.forEach(obj => scene.remove(obj));
 
-  // ── Expand bases by qty ─────────────────────────────────────────────────────
+  // Expand bases by qty
   const slots = [];
-  for (const b of project.bases) {
+  for (const b of project.bases)
     for (let i = 0; i < (b.qty || 1); i++) slots.push(b);
-  }
 
   const T = 18, GAP = 2;
   let offsetX = 0;
-  const group = new THREE.Group();
-  group.userData.isFurniture = true;
 
   for (const b of slots) {
-    const ct = cfg.cabinetTypes[b.typeKey];
-    const isWall = ct.group === 'wall';
-    const cab = buildCabinet(b, ct, b.w, b.h, b.d, T, b.filling || {}, isWall);
-    cab.position.set(offsetX + b.w / 2, isWall ? b.h * 0.6 + 400 : b.h / 2, 0);
-    group.add(cab);
+    const ct  = cfg.cabinetTypes[b.typeKey];
+    const isW = ct.group === 'wall';
+    const grp = buildCabinet(b, ct, b.w, b.h, b.d, T, b.filling || {}, isW);
+    grp.userData.isCab = true;
+    // floor cabinets: bottom at Y=0; wall cabinets: float at Y=400+h*0.1
+    grp.position.set(offsetX + b.w / 2, isW ? 400 + b.h / 2 : b.h / 2, 0);
+    scene.add(grp);
     offsetX += b.w + GAP;
   }
 
-  const totalW = offsetX - GAP;
-  const maxH   = Math.max(...slots.map(b => b.h));
-  const maxD   = Math.max(...slots.map(b => b.d));
-  group.position.x = -totalW / 2;
-  scene.add(group);
+  const totalW = Math.max(offsetX - GAP, 1);
+  const maxH   = Math.max(...slots.map(b => b.h), 2000);
+  const maxD   = Math.max(...slots.map(b => b.d), 600);
 
-  // ── Room ──────────────────────────────────────────────────────────────────
-  const roomW = Math.max(totalW + 2400, 4000);
-  const roomH = Math.max(maxH  + 1200, 3600);
-  const roomD = Math.max(maxD  + 3000, 5000);
-  buildRoom(scene, roomW, roomH, roomD, totalW, maxH);
+  // Centre cabinets on X
+  scene.traverse(o => { if (o.userData.isCab) o.position.x -= totalW / 2; });
 
-  // ── Camera framing ──────────────────────────────────────────────────────────
-  const dist = Math.max(totalW, maxH) * 1.4 + 1200;
-  camera.position.set(totalW * 0.25, maxH * 0.55, dist);
-  camera.lookAt(0, maxH * 0.4, 0);
-  controls.target.set(0, maxH * 0.4, 0);
+  // Room dimensions
+  const rW = totalW + 2600;   // extra space left/right
+  const rH = maxH   + 1400;   // up to ceiling
+  const rD = maxD   + 4000;   // depth of room (camera is inside)
+
+  // Cabinets are at Z=0 (back face). Room back wall at Z = -(maxD/2 + 80)
+  const backZ = -(maxD / 2 + 80);
+  // Floor/ceiling/walls span forward from backZ to backZ + rD
+  const midZ  = backZ + rD / 2;
+
+  buildRoom(scene, rW, rH, rD, backZ, midZ, maxH);
+
+  // Camera: slightly right, eye level, in front of cabinets
+  const dist = Math.max(totalW, maxH) * 1.3 + 1500;
+  camera.position.set(totalW * 0.15, maxH * 0.5, maxD / 2 + dist);
+  const tgt = new THREE.Vector3(0, maxH * 0.42, 0);
+  camera.lookAt(tgt);
+  controls.target.copy(tgt);
   controls.update();
 
-  // Shadow camera fit
-  sun.shadow.camera.left = sun.shadow.camera.bottom = -(Math.max(totalW, roomH));
-  sun.shadow.camera.right = sun.shadow.camera.top  =  Math.max(totalW, roomH);
+  // Fit shadow frustum
+  const s = Math.max(totalW, maxH) + 500;
+  sun.position.set(totalW * 0.5, maxH * 2, maxD / 2 + dist * 0.4);
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -s;
+  sun.shadow.camera.right = sun.shadow.camera.top   =  s;
+  sun.shadow.camera.far = dist * 3;
   sun.shadow.camera.updateProjectionMatrix();
 
   resizeThree();
 }
 
-function buildRoom(scene, roomW, roomH, roomD, totalW, maxH) {
-  const parquetTex = makeParquetTexture();
-  parquetTex.repeat.set(roomW / 600, roomD / 600);
+function buildRoom(scene, rW, rH, rD, backZ, midZ, maxH) {
+  const tag = o => { o.userData.isRoom = true; o.receiveShadow = true; scene.add(o); return o; };
+  const box = (w, h, d, x, y, z, mat) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    return tag(m);
+  };
 
-  const wallTex = makeWallTexture();
-  wallTex.repeat.set(roomW / 1200, roomH / 1000);
+  // Textures
+  const pt = makeParquetTexture();
+  pt.repeat.set(rW / 500, rD / 500);
+  const wt = makeWallTexture();
+  wt.repeat.set(rW / 1000, rH / 900);
+  const wts = makeWallTexture();
+  wts.repeat.set(rD / 1000, rH / 900);
 
-  const wallTexSide = makeWallTexture();
-  wallTexSide.repeat.set(roomD / 1200, roomH / 1000);
-
-  // ── Floor ───────────────────────────────────────────────────────────────────
-  const floorGeo = new THREE.PlaneGeometry(roomW, roomD);
-  const floorMat = new THREE.MeshStandardMaterial({
-    map: parquetTex, roughness: 0.55, metalness: 0.05,
-  });
-  const floor = new THREE.Mesh(floorGeo, floorMat);
+  // ── Floor ──
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(rW, rD),
+    new THREE.MeshStandardMaterial({ map: pt, roughness: 0.6, metalness: 0.04 })
+  );
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(0, -1, roomD / 2 - maxH * 0.05);
-  floor.receiveShadow = true;
-  floor.userData.isRoom = true;
-  scene.add(floor);
+  floor.position.set(0, 0, midZ);
+  tag(floor);
 
-  // ── Back wall ───────────────────────────────────────────────────────────────
-  const backWallGeo = new THREE.PlaneGeometry(roomW, roomH);
-  const backWallMat = new THREE.MeshStandardMaterial({
-    map: wallTex, roughness: 0.9, metalness: 0.0, color: 0xeae5db,
-  });
-  const backWall = new THREE.Mesh(backWallGeo, backWallMat);
-  backWall.position.set(0, roomH / 2, -maxH * 0.12);
-  backWall.receiveShadow = true;
-  backWall.userData.isRoom = true;
-  scene.add(backWall);
+  // ── Back wall ──
+  const bwMat = new THREE.MeshStandardMaterial({ map: wt, color: 0xe8e3d8, roughness: 0.92 });
+  const bw = new THREE.Mesh(new THREE.PlaneGeometry(rW, rH), bwMat);
+  bw.position.set(0, rH / 2, backZ);
+  tag(bw);
 
-  // ── Left wall ───────────────────────────────────────────────────────────────
-  const sideWallGeo = new THREE.PlaneGeometry(roomD, roomH);
-  const sideWallMat = new THREE.MeshStandardMaterial({
-    map: wallTexSide, roughness: 0.9, metalness: 0.0, color: 0xe8e3d8,
-  });
-  const leftWall = new THREE.Mesh(sideWallGeo, sideWallMat.clone());
-  leftWall.rotation.y = Math.PI / 2;
-  leftWall.position.set(-roomW / 2, roomH / 2, roomD / 2 - maxH * 0.05);
-  leftWall.receiveShadow = true;
-  leftWall.userData.isRoom = true;
-  scene.add(leftWall);
+  // ── Left wall ──
+  const swMat = new THREE.MeshStandardMaterial({ map: wts, color: 0xe5e0d5, roughness: 0.92 });
+  const lw = new THREE.Mesh(new THREE.PlaneGeometry(rD, rH), swMat.clone());
+  lw.rotation.y = Math.PI / 2;
+  lw.position.set(-rW / 2, rH / 2, midZ);
+  tag(lw);
 
-  const rightWall = new THREE.Mesh(sideWallGeo, sideWallMat);
-  rightWall.rotation.y = -Math.PI / 2;
-  rightWall.position.set(roomW / 2, roomH / 2, roomD / 2 - maxH * 0.05);
-  rightWall.receiveShadow = true;
-  rightWall.userData.isRoom = true;
-  scene.add(rightWall);
+  // ── Right wall ──
+  const rw = new THREE.Mesh(new THREE.PlaneGeometry(rD, rH), swMat);
+  rw.rotation.y = -Math.PI / 2;
+  rw.position.set(rW / 2, rH / 2, midZ);
+  tag(rw);
 
-  // ── Ceiling ─────────────────────────────────────────────────────────────────
-  const ceilGeo = new THREE.PlaneGeometry(roomW, roomD);
-  const ceilMat = new THREE.MeshStandardMaterial({ color: 0xf8f5f0, roughness: 1 });
-  const ceil = new THREE.Mesh(ceilGeo, ceilMat);
+  // ── Ceiling ──
+  const ceil = new THREE.Mesh(
+    new THREE.PlaneGeometry(rW, rD),
+    new THREE.MeshStandardMaterial({ color: 0xf5f2ec, roughness: 1 })
+  );
   ceil.rotation.x = Math.PI / 2;
-  ceil.position.set(0, roomH, roomD / 2 - maxH * 0.05);
-  ceil.userData.isRoom = true;
-  scene.add(ceil);
+  ceil.position.set(0, rH, midZ);
+  tag(ceil);
 
-  // ── Baseboard (плинтус) ──────────────────────────────────────────────────────
-  const baseH = 80, baseD = 18;
-  const baseMat = new THREE.MeshStandardMaterial({ color: 0xfaf7f2, roughness: 0.6 });
+  // ── Baseboard back ──
+  const bpMat = new THREE.MeshStandardMaterial({ color: 0xfaf7f2, roughness: 0.5 });
+  box(rW, 80, 16, 0, 40, backZ + 8, bpMat);
+  // left & right
+  box(16, 80, rD, -rW / 2 + 8, 40, midZ, bpMat.clone());
+  box(16, 80, rD,  rW / 2 - 8, 40, midZ, bpMat.clone());
 
-  // Back baseboard
-  const bbGeo = new THREE.BoxGeometry(roomW, baseH, baseD);
-  const bb = new THREE.Mesh(bbGeo, baseMat);
-  bb.position.set(0, baseH / 2, -maxH * 0.12 + baseD / 2);
-  bb.userData.isRoom = true;
-  scene.add(bb);
+  // ── Ceiling lamp ──
+  const lampY = rH - 20;
+  const lampZ = midZ - rD * 0.25; // lamp above cabinets area
+  const lamp = new THREE.Mesh(
+    new THREE.CylinderGeometry(55, 75, 28, 20),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe090, emissiveIntensity: 0.7 })
+  );
+  lamp.position.set(0, lampY, lampZ);
+  tag(lamp);
 
-  // Left baseboard
-  const lbGeo = new THREE.BoxGeometry(baseD, baseH, roomD);
-  const lb = new THREE.Mesh(lbGeo, baseMat.clone());
-  lb.position.set(-roomW / 2 + baseD / 2, baseH / 2, roomD / 2 - maxH * 0.05);
-  lb.userData.isRoom = true;
-  scene.add(lb);
+  // cord
+  const cord = new THREE.Mesh(
+    new THREE.CylinderGeometry(3, 3, 90, 6),
+    new THREE.MeshStandardMaterial({ color: 0x999999 })
+  );
+  cord.position.set(0, lampY + 59, lampZ);
+  tag(cord);
 
-  // Right baseboard
-  const rb = lb.clone();
-  rb.position.x = roomW / 2 - baseD / 2;
-  rb.userData.isRoom = true;
-  scene.add(rb);
-
-  // ── Ceiling lamp ──────────────────────────────────────────────────────────
-  const lampGeo = new THREE.CylinderGeometry(60, 80, 30, 16);
-  const lampMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe8b0, emissiveIntensity: 0.6 });
-  const lamp = new THREE.Mesh(lampGeo, lampMat);
-  lamp.position.set(0, roomH - 15, 800);
-  lamp.userData.isRoom = true;
-  scene.add(lamp);
-
-  // Lamp cord
-  const cordGeo = new THREE.CylinderGeometry(3, 3, 100, 6);
-  const cordMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
-  const cord = new THREE.Mesh(cordGeo, cordMat);
-  cord.position.set(0, roomH - 65, 800);
-  cord.userData.isRoom = true;
-  scene.add(cord);
-
-  // Point light from lamp
-  const pointLight = new THREE.PointLight(0xfff5e0, 0.8, roomD * 1.5);
-  pointLight.position.set(0, roomH - 50, 800);
-  pointLight.userData.isRoom = true;
-  scene.add(pointLight);
+  // point light
+  const pl = new THREE.PointLight(0xfff4d0, 1.0, rD * 2.2);
+  pl.position.set(0, lampY - 20, lampZ);
+  pl.userData.isRoom = true;
+  scene.add(pl);
 }
 
 function buildCabinet(b, ct, W, H, D, T, fill, isWall) {
