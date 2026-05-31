@@ -17,6 +17,7 @@
     <div class="logo">Арт<i class="v">V</i>итрин<span style="color:var(--petal)">А</span></div>
     <nav class="tab-nav">
       <button class="tab-btn active" data-tab="tab-calc">Калькулятор</button>
+      <button class="tab-btn" data-tab="tab-history">📁 Расчёты</button>
       <button class="tab-btn" data-tab="tab-admin">Настройки и цены</button>
     </nav>
   </div>
@@ -38,6 +39,17 @@
           </label>
           <label>Клиент
             <input type="text" id="proj-client" placeholder="Иван Иванов">
+          </label>
+          <label>Номер заказа
+            <input type="text" id="proj-order" placeholder="авто">
+          </label>
+          <label>Изображение для КП
+            <div class="kp-image-row">
+              <button class="btn btn-outline btn-sm" id="btn-upload-kp-img" type="button">📎 Выбрать фото</button>
+              <span id="kp-img-name" class="kp-img-name">не выбрано</span>
+              <button class="btn btn-sm btn-danger" id="btn-clear-kp-img" type="button" style="display:none">✕</button>
+            </div>
+            <input type="file" id="kp-img-file" accept="image/*" style="display:none">
           </label>
         </div>
       </div>
@@ -135,7 +147,9 @@
           <span class="amount" id="summary-total">0 ₽</span>
         </div>
         <div class="sidebar-actions">
-          <button class="btn btn-primary" id="btn-print" style="width:100%">🖨 Распечатать смету</button>
+          <button class="btn btn-primary" id="btn-kp" style="width:100%">📄 КП для клиента</button>
+          <button class="btn btn-outline" id="btn-print" style="width:100%">🖨 Распечатать смету</button>
+          <button class="btn btn-outline" id="btn-save-calc" style="width:100%">💾 Сохранить расчёт</button>
           <button class="btn btn-outline" id="btn-reset" style="width:100%">🗑 Очистить смету</button>
         </div>
       </div>
@@ -143,6 +157,18 @@
 
   </div><!-- /calc-layout -->
 </div><!-- /tab-calc -->
+
+<!-- ════ HISTORY TAB ══════════════════════════════════════════════════════ -->
+<div id="tab-history" class="tab-pane">
+  <div class="history-layout">
+    <div class="history-header">
+      <h2>📁 Сохранённые расчёты</h2>
+    </div>
+    <div id="history-list">
+      <div class="empty-state">Нет сохранённых расчётов</div>
+    </div>
+  </div>
+</div>
 
 <!-- ════ ADMIN TAB ════════════════════════════════════════════════════════ -->
 <div id="tab-admin" class="tab-pane">
@@ -246,5 +272,6 @@
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>
 <script src="js/admin.js"></script>
+<script src="js/history.js"></script>
 </body>
 </html>

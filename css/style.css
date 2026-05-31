@@ -608,3 +608,48 @@ select.addon-select:focus { border-color: var(--petal); }
   .section-row td { background: #f5f3ef; font-weight: 700; }
   .print-table tfoot td { background: #E9E5DC; font-weight: 800; font-size: 13pt; }
 }
+
+/* ── KP Image Upload ──────────────────────────────────────────── */
+.kp-image-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;
+}
+.kp-img-name {
+  font-size: .78rem; color: #7a6e64; font-style: italic;
+}
+
+/* ── History Tab ──────────────────────────────────────────────── */
+.history-layout {
+  max-width: 900px; margin: 0 auto; padding: 32px 24px;
+}
+.history-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.history-header h2 { font-size: 1.3rem; font-weight: 800; }
+
+.history-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.history-card-info { flex: 1; min-width: 200px; }
+.history-card-title {
+  font-size: 1rem; font-weight: 700; margin-bottom: 6px;
+}
+.history-card-meta {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  font-size: .75rem; color: #7a6e64;
+}
+.history-card-total {
+  font-size: 1.1rem; font-weight: 800;
+  color: var(--graphite); white-space: nowrap;
+}
+.history-card-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}

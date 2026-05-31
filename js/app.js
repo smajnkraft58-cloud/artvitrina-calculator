@@ -15,7 +15,7 @@ function saveProject() {
 }
 
 const DEFAULT_PROJECT = {
-  name: '', client: '', bases: [],
+  name: '', client: '', orderNum: '', kpImage: null, bases: [],
   dobory: { left: false, right: false, top: false, falsh: false, customH: 0 },
   wallPanel: { typeKey: '', w: 0, h: 0 },
   cushion: { w: 0, h: 0 },
@@ -41,6 +41,31 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ─── Project Info ─────────────────────────────────────────────────────────────
 document.getElementById('proj-name').addEventListener('input', e => { project.name = e.target.value; saveProject(); });
 document.getElementById('proj-client').addEventListener('input', e => { project.client = e.target.value; saveProject(); });
+document.getElementById('proj-order').addEventListener('input', e => { project.orderNum = e.target.value; saveProject(); });
+
+// ─── KP Image Upload ──────────────────────────────────────────────────────────
+document.getElementById('btn-upload-kp-img').addEventListener('click', () => {
+  document.getElementById('kp-img-file').click();
+});
+document.getElementById('kp-img-file').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    project.kpImage = ev.target.result;
+    saveProject();
+    document.getElementById('kp-img-name').textContent = file.name;
+    document.getElementById('btn-clear-kp-img').style.display = '';
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+document.getElementById('btn-clear-kp-img').addEventListener('click', () => {
+  project.kpImage = null;
+  saveProject();
+  document.getElementById('kp-img-name').textContent = 'не выбрано';
+  document.getElementById('btn-clear-kp-img').style.display = 'none';
+});
 
 // ─── Add Base Button ──────────────────────────────────────────────────────────
 document.getElementById('btn-add-base').addEventListener('click', () => {
@@ -515,6 +540,16 @@ document.getElementById('btn-print').addEventListener('click', () => {
   window.print();
 });
 
+document.getElementById('btn-kp').addEventListener('click', () => {
+  openKP();
+});
+
+document.getElementById('btn-save-calc').addEventListener('click', () => {
+  const total = getCurrentTotal();
+  saveToHistory(project, total, cfg);
+  showToast('Расчёт сохранён');
+});
+
 document.getElementById('btn-reset').addEventListener('click', () => {
   if (confirm('Очистить всю текущую смету?')) {
     project = JSON.parse(JSON.stringify(DEFAULT_PROJECT));
@@ -562,6 +597,150 @@ function buildPrintReport() {
   `;
 }
 
+// ─── KP Builder ───────────────────────────────────────────────────────────────
+function getCurrentTotal() {
+  let total = 0;
+  for (const b of project.bases) {
+    const { cost } = calcCabinetCost(b, cfg);
+    total += cost * (b.qty || 1);
+  }
+  for (const ci of project.customItems) total += ci.price * ci.qty;
+  const { left, right, top, falsh, customH } = project.dobory;
+  const W = project.totalW / 1000, H = project.totalH / 1000;
+  const dPrice = cfg.general.doborPricePerM2, dW = cfg.general.doborWidth / 1000;
+  if (left)  total += dW * H * dPrice;
+  if (right) total += dW * H * dPrice;
+  if (top && customH > 0) total += W * (customH / 1000) * dPrice;
+  if (falsh) total += dW * H * dPrice;
+  if (project.wallPanel.typeKey && project.wallPanel.w && project.wallPanel.h) {
+    const wp = cfg.wallPanels[project.wallPanel.typeKey];
+    total += (project.wallPanel.w * project.wallPanel.h / 1_000_000) * wp.price;
+  }
+  if (project.cushion.w && project.cushion.h) {
+    total += (project.cushion.w * project.cushion.h / 1_000_000) * cfg.general.cushionPricePerM2;
+  }
+  return total;
+}
+
+function generateOrderNum() {
+  const saved = loadHistory();
+  const seq = String(saved.length + 1).padStart(2, '0');
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  return `${seq}${mm}${dd}${yy}/А`;
+}
+
+function openKP(snapshotProject, snapshotCfg) {
+  const p = snapshotProject || project;
+  const c = snapshotCfg || cfg;
+  const orderNum = p.orderNum || generateOrderNum();
+  const date = new Date().toLocaleDateString('ru-RU');
+
+  // Build rows
+  let rows = '';
+  let total = 0;
+
+  for (const b of p.bases) {
+    const ct = c.cabinetTypes[b.typeKey];
+    const { cost } = calcCabinetCost(b, c);
+    const qty = b.qty || 1;
+    const subtotal = cost * qty;
+    total += subtotal;
+    const facadeName = b.facadeKey ? c.facades[b.facadeKey]?.name : '';
+    const fillingItems = Object.entries(b.filling || {})
+      .filter(([, q]) => q > 0)
+      .map(([k, q]) => `${c.filling[k]?.name}: ${q} шт`)
+      .join(', ');
+    let desc = `<b>${ct.name}</b><br>${b.w} × ${b.h} × ${b.d} мм, ${qty} шт.`;
+    if (facadeName) desc += `<br>Фасад: ${facadeName}`;
+    if (fillingItems) desc += `<br>${fillingItems}`;
+    rows += `<tr><td>${desc}</td><td class="td-price">${Math.round(subtotal).toLocaleString('ru-RU')}</td></tr>`;
+  }
+
+  for (const ci of p.customItems) {
+    const cost = ci.price * ci.qty;
+    total += cost;
+    rows += `<tr><td><b>${ci.name}</b> × ${ci.qty} шт.</td><td class="td-price">${Math.round(cost).toLocaleString('ru-RU')}</td></tr>`;
+  }
+
+  const addons = [];
+  const { left, right, top, falsh, customH } = p.dobory;
+  const W = p.totalW / 1000, H = p.totalH / 1000;
+  const dPrice = c.general.doborPricePerM2, dW = c.general.doborWidth / 1000;
+  if (left)  { const cost = dW*H*dPrice; total += cost; addons.push(['Левый добор', cost]); }
+  if (right) { const cost = dW*H*dPrice; total += cost; addons.push(['Правый добор', cost]); }
+  if (top && customH > 0) { const cost = W*(customH/1000)*dPrice; total += cost; addons.push(['Верхний добор', cost]); }
+  if (falsh) { const cost = dW*H*dPrice; total += cost; addons.push(['Фальш-панель', cost]); }
+  if (p.wallPanel.typeKey && p.wallPanel.w && p.wallPanel.h) {
+    const wp = c.wallPanels[p.wallPanel.typeKey];
+    const cost = (p.wallPanel.w * p.wallPanel.h / 1_000_000) * wp.price;
+    total += cost;
+    addons.push([wp.name, cost]);
+  }
+  if (p.cushion.w && p.cushion.h) {
+    const cost = (p.cushion.w * p.cushion.h / 1_000_000) * c.general.cushionPricePerM2;
+    total += cost;
+    addons.push(['Мягкая подушка', cost]);
+  }
+  for (const [name, cost] of addons) {
+    rows += `<tr><td><b>${name}</b></td><td class="td-price">${Math.round(cost).toLocaleString('ru-RU')}</td></tr>`;
+  }
+
+  const imgHtml = p.kpImage
+    ? `<div class="kp-img-block"><img src="${p.kpImage}" alt="Проект"></div>`
+    : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>КП — ${p.client || p.name || 'АртВитринА'}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Arial',sans-serif;color:#1a1a1a;background:#fff;padding:40px;max-width:800px;margin:0 auto}
+  .logo{text-align:center;margin-bottom:24px}
+  .logo-text{font-size:32px;font-weight:900;letter-spacing:2px;text-transform:uppercase}
+  .logo-text .v{font-style:italic;color:#CEB26F}
+  .logo-sub{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:#888;margin-top:2px}
+  h1{text-align:center;font-size:18px;font-weight:700;margin-bottom:8px}
+  .order-num{text-align:center;font-size:15px;margin-bottom:28px}
+  table{width:100%;border-collapse:collapse;margin-bottom:24px}
+  th{background:#f5f5f5;font-size:13px;font-weight:700;padding:10px 14px;text-align:left;border:1px solid #ddd}
+  th.td-price,td.td-price{text-align:right;white-space:nowrap;font-weight:700;width:140px}
+  td{padding:12px 14px;border:1px solid #ddd;font-size:13px;vertical-align:top;line-height:1.6}
+  tfoot td{background:#2E2E2E;color:#fff;font-size:15px;font-weight:700;padding:12px 14px}
+  .kp-img-block{margin-top:32px;text-align:center}
+  .kp-img-block img{max-width:100%;border-radius:8px}
+  @media print{body{padding:20px}button{display:none}}
+</style>
+</head>
+<body>
+  <div class="logo">
+    <div class="logo-text">Арт<i class="v">V</i>итрин<span style="color:#CEB26F">А</span></div>
+    <div class="logo-sub">мебель на заказ</div>
+  </div>
+  <h1>Предварительный расчёт стоимости по заказу</h1>
+  <div class="order-num">№ ${orderNum} от ${date}</div>
+  ${p.client ? `<p style="text-align:center;margin-bottom:16px;font-size:13px">Клиент: <b>${p.client}</b>${p.name ? ' &nbsp;|&nbsp; Проект: <b>' + p.name + '</b>' : ''}</p>` : ''}
+  <table>
+    <thead><tr><th>Комплектация</th><th class="td-price">Стоимость р.</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>ИТОГО</td><td class="td-price">${Math.round(total).toLocaleString('ru-RU')}</td></tr></tfoot>
+  </table>
+  ${imgHtml}
+  <div style="margin-top:16px;text-align:center">
+    <button onclick="window.print()" style="padding:10px 32px;background:#CEB26F;color:#2E2E2E;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer">🖨 Распечатать / Сохранить PDF</button>
+  </div>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatMoney(n) {
   return Math.round(n).toLocaleString('ru-RU') + ' ₽';
@@ -580,8 +759,13 @@ function showToast(msg) {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 function restoreFormFields() {
-  document.getElementById('proj-name').value   = project.name   || '';
-  document.getElementById('proj-client').value = project.client || '';
+  document.getElementById('proj-name').value   = project.name     || '';
+  document.getElementById('proj-client').value = project.client   || '';
+  document.getElementById('proj-order').value  = project.orderNum || '';
+  if (project.kpImage) {
+    document.getElementById('kp-img-name').textContent = 'фото загружено';
+    document.getElementById('btn-clear-kp-img').style.display = '';
+  }
   document.getElementById('total-w').value = project.totalW || 0;
   document.getElementById('total-h').value = project.totalH || 0;
   const d = project.dobory;
