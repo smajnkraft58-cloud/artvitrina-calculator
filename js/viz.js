@@ -62,44 +62,52 @@ function render3D() {
 
 function initThree() {
   const canvas = document.getElementById('viz-canvas');
-  const container = document.getElementById('viz-3d');
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setClearColor(0xf5f3ef, 1);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
 
-  const camera = new THREE.PerspectiveCamera(45, 1, 1, 20000);
+  const camera = new THREE.PerspectiveCamera(48, 1, 1, 30000);
 
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.minDistance = 100;
-  controls.maxDistance = 8000;
+  controls.dampingFactor = 0.07;
+  controls.minDistance = 200;
+  controls.maxDistance = 12000;
+  controls.maxPolarAngle = Math.PI / 2 - 0.02; // don't go below floor
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xf5f3ef);
+  scene.background = new THREE.Color(0xf0ede6);
+  scene.fog = new THREE.Fog(0xf0ede6, 8000, 18000);
 
-  // Lights
-  const ambient = new THREE.AmbientLight(0xffffff, 0.7);
-  scene.add(ambient);
+  // ── Lights ──────────────────────────────────────────────────────────────────
+  // Ambient (soft warm fill)
+  scene.add(new THREE.AmbientLight(0xfff8f0, 0.55));
 
-  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-  sun.position.set(2000, 3000, 2000);
+  // Main ceiling spot
+  const sun = new THREE.DirectionalLight(0xfffaf0, 1.1);
+  sun.position.set(1500, 4000, 2500);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0003;
   sun.shadow.camera.near = 100;
-  sun.shadow.camera.far = 15000;
-  sun.shadow.camera.left = -3000;
-  sun.shadow.camera.right = 3000;
-  sun.shadow.camera.top = 3000;
-  sun.shadow.camera.bottom = -3000;
+  sun.shadow.camera.far = 20000;
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -4000;
+  sun.shadow.camera.right = sun.shadow.camera.top = 4000;
   scene.add(sun);
 
-  const fill = new THREE.DirectionalLight(0xfff5e0, 0.4);
-  fill.position.set(-1500, 500, -500);
+  // Soft fill from left
+  const fill = new THREE.DirectionalLight(0xe8eeff, 0.35);
+  fill.position.set(-3000, 2000, 1000);
   scene.add(fill);
+
+  // Warm back-fill
+  const back = new THREE.DirectionalLight(0xfff0d8, 0.2);
+  back.position.set(0, 1000, -3000);
+  scene.add(back);
 
   threeCtx = { scene, camera, renderer, controls, animId: null, sun };
   resizeThree();
@@ -112,6 +120,71 @@ function initThree() {
     renderer.render(scene, camera);
   }
   animate();
+}
+
+// ─── Procedural textures ──────────────────────────────────────────────────────
+function makeParquetTexture() {
+  const size = 512;
+  const cvs = document.createElement('canvas');
+  cvs.width = cvs.height = size;
+  const ctx = cvs.getContext('2d');
+
+  const plankW = 64, plankH = 20;
+  const colors = ['#c8a96e','#bf9f65','#d4b47a','#c09060','#b88c58','#cca870'];
+
+  ctx.fillStyle = '#c09060';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let row = 0; row < size / plankH + 1; row++) {
+    const offset = (row % 2) * (plankW / 2);
+    for (let col = -1; col < size / plankW + 1; col++) {
+      const x = col * plankW + offset, y = row * plankH;
+      const c = colors[(row * 3 + col * 2) % colors.length];
+      ctx.fillStyle = c;
+      ctx.fillRect(x + 1, y + 1, plankW - 2, plankH - 2);
+
+      // Wood grain lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+      ctx.lineWidth = 0.5;
+      for (let g = 3; g < plankW - 4; g += 7) {
+        ctx.beginPath();
+        ctx.moveTo(x + g, y + 2);
+        ctx.lineTo(x + g + 2, y + plankH - 3);
+        ctx.stroke();
+      }
+
+      // Plank border (grout)
+      ctx.strokeStyle = 'rgba(90,60,30,0.25)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, plankW - 1, plankH - 1);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+function makeWallTexture() {
+  const size = 256;
+  const cvs = document.createElement('canvas');
+  cvs.width = cvs.height = size;
+  const ctx = cvs.getContext('2d');
+
+  // Subtle plaster — base + fine noise
+  ctx.fillStyle = '#e8e3d8';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 4000; i++) {
+    const x = Math.random() * size, y = Math.random() * size;
+    const alpha = Math.random() * 0.04;
+    ctx.fillStyle = `rgba(${Math.random()>0.5?180:220},${Math.random()>0.5?170:210},${Math.random()>0.5?150:190},${alpha})`;
+    ctx.fillRect(x, y, 2, 2);
+  }
+
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
 }
 
 function resizeThree() {
@@ -153,77 +226,164 @@ const MAT_EDGE   = () => new THREE.LineBasicMaterial({ color: 0x8a7e70, linewidt
 function buildScene() {
   const { scene, camera, controls, sun } = threeCtx;
 
-  // Clear previous cabinets
+  // Clear everything tagged as furniture or room
   const toRemove = [];
-  scene.traverse(obj => { if (obj.userData.isFurniture) toRemove.push(obj); });
-  toRemove.forEach(obj => {
-    obj.geometry?.dispose();
-    if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-    else obj.material?.dispose();
-    scene.remove(obj);
-  });
-
-  // Ground plane
-  scene.children
-    .filter(c => c.userData.isGround)
-    .forEach(c => scene.remove(c));
-  const groundGeo = new THREE.PlaneGeometry(20000, 20000);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0xe8e3d8, roughness: 1 });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  ground.userData.isGround = true;
-  scene.add(ground);
+  scene.traverse(obj => { if (obj.userData.isFurniture || obj.userData.isRoom) toRemove.push(obj); });
+  toRemove.forEach(obj => scene.remove(obj));
 
   // ── Expand bases by qty ─────────────────────────────────────────────────────
   const slots = [];
   for (const b of project.bases) {
-    const qty = b.qty || 1;
-    for (let i = 0; i < qty; i++) slots.push(b);
+    for (let i = 0; i < (b.qty || 1); i++) slots.push(b);
   }
 
-  const T = 18; // panel thickness mm
-  const GAP = 2; // gap between cabinets
-
+  const T = 18, GAP = 2;
   let offsetX = 0;
   const group = new THREE.Group();
   group.userData.isFurniture = true;
 
   for (const b of slots) {
     const ct = cfg.cabinetTypes[b.typeKey];
-    const W = b.w, H = b.h, D = b.d;
     const isWall = ct.group === 'wall';
-    const fill = b.filling || {};
-
-    const cabinetGroup = buildCabinet(b, ct, W, H, D, T, fill, isWall);
-    cabinetGroup.position.set(offsetX + W / 2, isWall ? H * 0.6 + 400 : H / 2, 0);
-    group.add(cabinetGroup);
-
-    offsetX += W + GAP;
+    const cab = buildCabinet(b, ct, b.w, b.h, b.d, T, b.filling || {}, isWall);
+    cab.position.set(offsetX + b.w / 2, isWall ? b.h * 0.6 + 400 : b.h / 2, 0);
+    group.add(cab);
+    offsetX += b.w + GAP;
   }
 
-  // Centre the whole group
   const totalW = offsetX - GAP;
+  const maxH   = Math.max(...slots.map(b => b.h));
+  const maxD   = Math.max(...slots.map(b => b.d));
   group.position.x = -totalW / 2;
-
   scene.add(group);
 
+  // ── Room ──────────────────────────────────────────────────────────────────
+  const roomW = Math.max(totalW + 2400, 4000);
+  const roomH = Math.max(maxH  + 1200, 3600);
+  const roomD = Math.max(maxD  + 3000, 5000);
+  buildRoom(scene, roomW, roomH, roomD, totalW, maxH);
+
   // ── Camera framing ──────────────────────────────────────────────────────────
-  const maxH = Math.max(...slots.map(b => b.h));
-  const dist = Math.max(totalW, maxH) * 1.5 + 800;
-  camera.position.set(totalW * 0.4, maxH * 0.6, dist);
+  const dist = Math.max(totalW, maxH) * 1.4 + 1200;
+  camera.position.set(totalW * 0.25, maxH * 0.55, dist);
   camera.lookAt(0, maxH * 0.4, 0);
   controls.target.set(0, maxH * 0.4, 0);
   controls.update();
 
   // Shadow camera fit
-  sun.shadow.camera.left   = -totalW;
-  sun.shadow.camera.right  =  totalW;
-  sun.shadow.camera.top    =  maxH * 2;
-  sun.shadow.camera.bottom = -200;
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -(Math.max(totalW, roomH));
+  sun.shadow.camera.right = sun.shadow.camera.top  =  Math.max(totalW, roomH);
   sun.shadow.camera.updateProjectionMatrix();
 
   resizeThree();
+}
+
+function buildRoom(scene, roomW, roomH, roomD, totalW, maxH) {
+  const parquetTex = makeParquetTexture();
+  parquetTex.repeat.set(roomW / 600, roomD / 600);
+
+  const wallTex = makeWallTexture();
+  wallTex.repeat.set(roomW / 1200, roomH / 1000);
+
+  const wallTexSide = makeWallTexture();
+  wallTexSide.repeat.set(roomD / 1200, roomH / 1000);
+
+  // ── Floor ───────────────────────────────────────────────────────────────────
+  const floorGeo = new THREE.PlaneGeometry(roomW, roomD);
+  const floorMat = new THREE.MeshStandardMaterial({
+    map: parquetTex, roughness: 0.55, metalness: 0.05,
+  });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, -1, roomD / 2 - maxH * 0.05);
+  floor.receiveShadow = true;
+  floor.userData.isRoom = true;
+  scene.add(floor);
+
+  // ── Back wall ───────────────────────────────────────────────────────────────
+  const backWallGeo = new THREE.PlaneGeometry(roomW, roomH);
+  const backWallMat = new THREE.MeshStandardMaterial({
+    map: wallTex, roughness: 0.9, metalness: 0.0, color: 0xeae5db,
+  });
+  const backWall = new THREE.Mesh(backWallGeo, backWallMat);
+  backWall.position.set(0, roomH / 2, -maxH * 0.12);
+  backWall.receiveShadow = true;
+  backWall.userData.isRoom = true;
+  scene.add(backWall);
+
+  // ── Left wall ───────────────────────────────────────────────────────────────
+  const sideWallGeo = new THREE.PlaneGeometry(roomD, roomH);
+  const sideWallMat = new THREE.MeshStandardMaterial({
+    map: wallTexSide, roughness: 0.9, metalness: 0.0, color: 0xe8e3d8,
+  });
+  const leftWall = new THREE.Mesh(sideWallGeo, sideWallMat.clone());
+  leftWall.rotation.y = Math.PI / 2;
+  leftWall.position.set(-roomW / 2, roomH / 2, roomD / 2 - maxH * 0.05);
+  leftWall.receiveShadow = true;
+  leftWall.userData.isRoom = true;
+  scene.add(leftWall);
+
+  const rightWall = new THREE.Mesh(sideWallGeo, sideWallMat);
+  rightWall.rotation.y = -Math.PI / 2;
+  rightWall.position.set(roomW / 2, roomH / 2, roomD / 2 - maxH * 0.05);
+  rightWall.receiveShadow = true;
+  rightWall.userData.isRoom = true;
+  scene.add(rightWall);
+
+  // ── Ceiling ─────────────────────────────────────────────────────────────────
+  const ceilGeo = new THREE.PlaneGeometry(roomW, roomD);
+  const ceilMat = new THREE.MeshStandardMaterial({ color: 0xf8f5f0, roughness: 1 });
+  const ceil = new THREE.Mesh(ceilGeo, ceilMat);
+  ceil.rotation.x = Math.PI / 2;
+  ceil.position.set(0, roomH, roomD / 2 - maxH * 0.05);
+  ceil.userData.isRoom = true;
+  scene.add(ceil);
+
+  // ── Baseboard (плинтус) ──────────────────────────────────────────────────────
+  const baseH = 80, baseD = 18;
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0xfaf7f2, roughness: 0.6 });
+
+  // Back baseboard
+  const bbGeo = new THREE.BoxGeometry(roomW, baseH, baseD);
+  const bb = new THREE.Mesh(bbGeo, baseMat);
+  bb.position.set(0, baseH / 2, -maxH * 0.12 + baseD / 2);
+  bb.userData.isRoom = true;
+  scene.add(bb);
+
+  // Left baseboard
+  const lbGeo = new THREE.BoxGeometry(baseD, baseH, roomD);
+  const lb = new THREE.Mesh(lbGeo, baseMat.clone());
+  lb.position.set(-roomW / 2 + baseD / 2, baseH / 2, roomD / 2 - maxH * 0.05);
+  lb.userData.isRoom = true;
+  scene.add(lb);
+
+  // Right baseboard
+  const rb = lb.clone();
+  rb.position.x = roomW / 2 - baseD / 2;
+  rb.userData.isRoom = true;
+  scene.add(rb);
+
+  // ── Ceiling lamp ──────────────────────────────────────────────────────────
+  const lampGeo = new THREE.CylinderGeometry(60, 80, 30, 16);
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe8b0, emissiveIntensity: 0.6 });
+  const lamp = new THREE.Mesh(lampGeo, lampMat);
+  lamp.position.set(0, roomH - 15, 800);
+  lamp.userData.isRoom = true;
+  scene.add(lamp);
+
+  // Lamp cord
+  const cordGeo = new THREE.CylinderGeometry(3, 3, 100, 6);
+  const cordMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+  const cord = new THREE.Mesh(cordGeo, cordMat);
+  cord.position.set(0, roomH - 65, 800);
+  cord.userData.isRoom = true;
+  scene.add(cord);
+
+  // Point light from lamp
+  const pointLight = new THREE.PointLight(0xfff5e0, 0.8, roomD * 1.5);
+  pointLight.position.set(0, roomH - 50, 800);
+  pointLight.userData.isRoom = true;
+  scene.add(pointLight);
 }
 
 function buildCabinet(b, ct, W, H, D, T, fill, isWall) {
